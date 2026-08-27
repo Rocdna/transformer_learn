@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 环境 / 密钥
+.env
+
+# 数据集缓存（可重新生成）
+data/dataset_ready/
+data/xyshyniaphy___cn2en_s/
+
+# 训练产物 checkpoint（模型权重较大，不入库，可随时重新训练）
+transformer*.pt
