@@ -68,3 +68,9 @@ Decoder:
 最终形态：
     把 Encoder 的 output 传给 Decoder
     
+Beam Search(束搜索)
+每一步都同时保留 top-B 条完整路径(B 叫 beam
+  width/束宽),到终点才比较谁最好。
+
+后续可扩展方向
+![alt text](6$66@~L2[_0E@1ISYC$8R_A.png)

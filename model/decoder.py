@@ -23,17 +23,19 @@ class Decoder(nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, tgt, encoder_output, self_mask=None, cross_mask=None):
+    def forward(self, tgt, encoder_output, self_mask=None, cross_mask=None, self_kv_caches=None, start_pos=0):
         # Token → Embedding
         x = self.embedding(tgt)
 
-        # 加入位置编码
-        x = self.pos_encoding(x)
+        # 加入位置编码（增量解码时用 start_pos 偏移到 token 的真实位置）
+        x = self.pos_encoding(x, offset=start_pos)
 
         # 随机失活
         x = self.dropout(x)
 
         # Decoder Layers
-        x = self.decoder(x, encoder_output, self_mask, cross_mask)
+        out = self.decoder(x, encoder_output, self_mask, cross_mask, self_kv_caches)
 
-        return x
+        if self_kv_caches is not None:
+            return out[0], out[1]
+        return out

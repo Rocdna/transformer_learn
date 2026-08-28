@@ -513,13 +513,62 @@ def _daytime_pairs():
     return out
 
 
+def _polite_pairs():
+    """短客套话扩充：全部以 Thank/Hello/Sorry/You're welcome 等关键锚点开头。
+    之前这类只有 1 条，被 "I want to / It is" 大模板淹没；
+    这里补足质量，让解码第一步这些锚点与 It/I 家族分庭抗礼。"""
+    return [
+        # ---- Thank 系 ----
+        ("谢谢", "Thank you."),
+        ("谢谢你", "Thank you so much."),
+        ("谢谢大家", "Thank you all."),
+        ("谢谢你们的帮助", "Thank you for your help."),
+        ("非常感谢", "Thank you very much."),
+        ("多谢", "Thanks a lot."),
+        ("感谢你的到来", "Thank you for coming."),
+        # ---- Hello 系 ----
+        ("你好", "Hello."),
+        ("大家好", "Hello everyone."),
+        ("你们好", "Hello there."),
+        ("嗨", "Hi."),
+        # ---- Sorry 系 ----
+        ("对不起", "I am sorry."),
+        ("不好意思", "Sorry to bother you."),
+        ("真的很抱歉", "I am really sorry."),
+        ("抱歉", "Sorry about that."),
+        ("请原谅", "Please forgive me."),
+        # ---- You're welcome / No problem 系 ----
+        ("不客气", "You are welcome."),
+        ("别客气", "Do not mention it."),
+        ("没事", "It is all right."),
+        ("小意思", "No problem."),
+        ("欢迎", "You are welcome."),
+        # ---- Goodbye 系 ----
+        ("再见", "Goodbye."),
+        ("回头见", "See you later."),
+        ("明天见", "See you tomorrow."),
+        ("下次见", "See you around."),
+        ("拜拜", "Bye bye."),
+        # ---- 简单应答系 ----
+        ("好的", "OK."),
+        ("太好了", "Great."),
+        ("太棒了", "Wonderful."),
+        ("明白了", "I understand."),
+        ("没问题", "No problem."),
+        ("慢走", "Take care."),
+        ("请慢慢来", "Take your time."),
+        ("继续保持", "Keep it up."),
+        ("辛苦了", "Good work."),
+    ]
+
+
 # 汇总所有扩展
 def build_extended_pairs():
     extra = []
     for fn in [_want_pairs, _like_pairs, _progressive_pairs, _time_pairs,
                _everyday_pairs, _weather_pairs, _demo_pairs, _have_pairs,
                _liken_pairs, _go_pairs, _floor_pairs, _dow_pairs,
-               _with_friend, _daytime_pairs]:
+               _with_friend, _daytime_pairs, _polite_pairs]:
         extra.extend(fn())
 
     # 手写句对优先，模板扩展去重（保留先出现的）

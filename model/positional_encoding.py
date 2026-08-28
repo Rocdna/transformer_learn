@@ -66,13 +66,16 @@ class PositionalEncoding(nn.Module):
         # ==================================================
         self.register_buffer("pe", pe)
 
-    def forward(self, x):
+    def forward(self, x, offset=0):
         """
         x: [batch_size, seq_len, d_model]
+        offset: 位置偏移（KV cache 增量解码时，token 的绝对位置从 offset 开始）
         """
         seq_len = x.size(1)
         # ==============================================
-        # 取出当前序列长度对应的位置编码
+        # 取出当前片段对应的位置编码
+        # 整句解码时 offset=0 -> pe[:, :seq_len, :]
+        # 增量解码时 offset=当前位置 -> pe[:, offset:offset+seq_len, :]
         # ==============================================
-        x = x + self.pe[:, :seq_len, :]
+        x = x + self.pe[:, offset:offset + seq_len, :]
         return x

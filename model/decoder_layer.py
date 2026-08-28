@@ -27,11 +27,15 @@ class TransformerDecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
 
-    def forward(self, x, encoder_output, self_mask=None, cross_mask=None):
+    def forward(self, x, encoder_output, self_mask=None, cross_mask=None, self_kv_cache=None):
         # ==================================
         # 1. Masked Self-Attention
+        #    若带了 kv_cache，则返回 (输出, 更新后的缓存)
         # ==================================
-        attention_output = self.self_attention(x, self_mask)
+        if self_kv_cache is not None:
+            attention_output, new_cache = self.self_attention(x, self_mask, self_kv_cache)
+        else:
+            attention_output = self.self_attention(x, self_mask)
 
         # 残差连接 + LayerNorm
         x = self.norm1(x + self.dropout(attention_output))
@@ -52,4 +56,7 @@ class TransformerDecoderLayer(nn.Module):
         # 残差连接 + LayerNorm
         x = self.norm3(x + self.dropout(ffn_output))
 
+        # 带了缓存：连同更新后的缓存一起返回
+        if self_kv_cache is not None:
+            return x, new_cache
         return x

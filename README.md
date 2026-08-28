@@ -18,7 +18,7 @@ transformers/
 │   ├── tokenizer.py              # CharTokenizer(中文按字符) / WordTokenizer(英文按单词)
 │   ├── my_datasets.py            # PyTorch Dataset：把句对编码成 src / tgt_input / labels
 │   ├── collate.py                # 把多个样本凑成一个 batch（补齐 padding）
-│   └── dataset_clean/            # 训练产物：生成好的数据集（658 句对）
+│   └── dataset_clean/            # 训练产物：生成好的数据集（686 句对）
 ├── model/
 │   ├── config.py                 # ★ 所有超参数统一放这里（train/predict 共用）
 │   ├── transformer.py            # ★ 总装：Encoder + Decoder + 输出投影层
@@ -36,6 +36,7 @@ transformers/
 │   ├── embedding.py              # TokenEmbedding（ID→向量）
 │   ├── positional_encoding.py    # 正弦位置编码
 │   └── mask.py                   # 生成 padding mask 与 causal mask
+│   └── generator.py              # ★ 生成器类：KV cache 增量解码 + 温度/top-k 采样
 ├── tests/                        # 各模块的单元测试
 └── image*.png                    # 参考示意图（非代码）
 ```
@@ -67,7 +68,8 @@ python predict.py
 
 - **手写句对（PAIRS）**：235 条日常会话，中英严格一一对应。
 - **模板扩展（EXTRA_* 函数）**：用「已人工校对过的」中英片段组合出更多严格对齐句对，系统覆盖**动词×宾语、主语×时态**等组合（如 `我想喝咖啡`、`他在看书`、`她喜欢唱歌`…），目的是教模型**组合翻译**而不仅是背整句。
-- 最终 **658 句对**，按 **8:1:1** 随机切分 train（526）/ validation（65）/ test（67）。
+- 最终 **686 句对**，按 **8:1:1** 随机切分 train（548）/ validation（68）/ test（70）。
+- **客套话扩充（`_polite_pairs`）**：短客套（谢谢/你好/不客气/再见…）原本每种只 1 条，被 `I want to` / `It is` 等大模板淹没导致翻错。新增 35 条**同锚点、不同形**的短句（如 `谢谢→Thank you.` / `非常感谢→Thank you very much.` / `多谢→Thanks a lot.`），给解码第一步的锚点补齐先验质量，**不删任何大模板**。
 - 生成的格式沿用 `conversations`：`[{user: "translate ... -- 中文"}, {assistant: 英文}]`，存到 `data/dataset_clean/`。
 
 ### 3.2 分词 `data/tokenizer.py`
@@ -174,19 +176,41 @@ x = LayerNorm(x + Dropout(FFN(x)))
 
 ---
 
-## 六、预测 `predict.py`
+## 六、预测 `predict.py` + 生成器 `model/generator.py`
 
 - 自动在根目录找**最新的** `transformer_*.pt`（按文件名字典序取最后），`load_state_dict` 加载。
-- **greedy_decode**（自回归）：
-  1. 源句过 Encoder 一次，得到 `enc_out`（记忆只算一遍）。
-  2. 从 `<BOS>` 开头的单 token 开始，循环：见过 Decoder 得到最后位置 logits → `argmax` 取最可能的词 → 拼回 tgt → 直到撞到 `<EOS>` 或达到 `max_len`。
-- 解码结果用空格拼接（英文按词）。
+- 生成逻辑抽成了 `Generator` 类，自带两条现代 LLM 推理机制：
+
+### 6.1 KV Cache（增量解码）
+
+朴素 **greedy_decode** 每推一个新词，都把**整个目标序列**重新过一遍 Decoder——历史位置的 K/V 全被重算，白白浪费。KV cache 的做法：
+
+- 推理时**只喂最新的一个 token**，把历史位置的 **K/V 缓存**起来。
+- 注意力里 `new_K = cat(历史 K, 新 K)`，新 token 的 Query 去注意完整的过去 → 与整句前向**结果完全一致**（已验证 `误差≈4e-7`）。
+- Q 从不缓存（每一步的 Query 都是新的）；位置编码要带 `offset`（否则单 token 会被当成第 0 位）。
+- 改动的核心在 `masked_multi_head_attention.py`（拼 K/V）+ `decoder*.py`（透传 cache + start_pos）；训练时传 `None`，行为完全不变。
+
+### 6.2 温度 + top-k 采样
+
+`argmax` 永远取最可能的词 → 单调、易重复。`Generator._sample_one` 改为从概率分布采样：
+
+- **温度 temperature**：`logits / temperature` 后再 softmax。`>1` 变平坦（更随机），`→0` 变尖（更接近贪心），`<=0` 即贪心。
+- **top-k**：只保留得分最高的 k 个，其余设 `-inf`，避免随机乱选。
+- 玩具模型上采样常「走神」，写实演示了 why 大模型要配大底数训练。
+
+### 6.3 一句话用法
+
+```python
+from model.generator import Generator
+gen = Generator(model, src_tok, tgt_tok, max_len=30, temperature=0.0, top_k=0)
+en = gen.translate("你好")     # temperature=0 → 贪心
+```
 
 ---
 
 ## 七、学习笔记 / 常见坑
 
-- **loss 很低 ≠ 翻得准**：teacher forcing 训练 + 数据少，模型倾向于「背整句」。推理是自回归（自己生成的词再喂回），一旦某个词偏了就容易滑向另一句背过的**近邻**句子（如「我想喝水」错成「我想喝咖啡」）。样本里 `谢谢`这类**短句**之间区分度低，最容易串扰。
+- **loss 很低 ≠ 翻得准**：teacher forcing 训练 + 数据少，模型倾向于「背整句」。推理是自回归（自己生成的词再喂回），一旦某个词偏了就容易滑向另一句背过的**近邻**句子（如「我想喝水」错成「我想喝咖啡」）。样本里 `谢谢`这类**短句**之间区分度低，最容易串扰 → **数据侧解法**：靠 `_polite_pairs` 扩充客套话锚点的先验（见 §3.1），让它们在解码第一步就有足够质量，不再被大模板顶掉。
 - **加层数/头数降不了 loss**：瓶颈往往不是容量，而是**数据量**和**训练稳定性**。数据只有几百句时，大模型反而更难训（学习率要更低、更易过拟合）。
 - **模型变大要降学习率**：从 12 层/1e-3 降到 4 层/3e-4 后收敛明显更稳。
 - **checkpoint 对不上**：train.py 与 predict.py 的模型结构必须一致。现在统一从 `model/config.py` 读参数，且 predict 自动取最新 checkpoint，避免手动同步出错。
