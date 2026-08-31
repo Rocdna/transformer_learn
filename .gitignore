@@ -13,5 +13,9 @@ data/xyshyniaphy___cn2en_s/
 # 训练产物 checkpoint（模型权重较大，不入库，可随时重新训练）
 transformer*.pt
 
-# nanoGPT 学习/重写工作区(草稿,不入库)
-nanoLearn/
+# nanoGPT 学习工作区 nanoLearn:保留 .py 脚本,忽略语料/训练产物
+nanoLearn/data/
+nanoLearn/out_bigram/
+nanoLearn/out_gpt/
+nanoLearn/**/*.pt
+nanoLearn/**/*.bin
